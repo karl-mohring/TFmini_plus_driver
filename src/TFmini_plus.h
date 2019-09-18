@@ -4,9 +4,11 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-const uint8_t FRAME_START = 0x5A;
+const uint8_t TFMINI_PLUS_FRAME_START = 0x5A;
+const uint8_t TFMINI_PLUS_RESPONSE_FRAME_HEADER = 0x59;
+const uint8_t TFMINI_PLUS_MINIMUM_PACKET_SIZE = 4;
 
-enum TFMINI_PLUS_COMMANDS {
+typedef enum TFMINI_PLUS_COMMANDS {
     TFMINI_PLUS_GET_DATA = 0,
     TFMINI_PLUS_GET_VERSION = 1,
     TFMINI_PLUS_SYSTEM_RESET = 2,
@@ -14,18 +16,37 @@ enum TFMINI_PLUS_COMMANDS {
     TFMINI_PLUS_TRIGGER_DETECTION = 4,
     TFMINI_PLUS_SET_OUTPUT_FORMAT = 5,
     TFMINI_PLUS_SET_BAUD_RATE = 6,
-    TFMINI_PLUS_SWITCH_DATA_OUTPUT = 7,
+    TFMINI_PLUS_ENABLE_DATA_OUTPUT = 7,
     TFMINI_PLUS_SET_COMMUNICATION_INTERFACE = 0x0A,
     TFMINI_PLUS_SET_I2C_ADDRESS = 0x0B,
     TFMINI_PLUS_SET_IO_MODE = 0x3B,
     TFMINI_PLUS_RESTORE_FACTORY_SETTINGS = 0x10,
     TFMINI_PLUS_SAVE_SETTINGS = 0x11
+} tfminiplus_command_t;
+
+enum TFMINI_PLUS_PACKET_LENGTHS {
+    TFMINI_PLUS_PACK_LENGTH_SYSTEM_RESET_RESPONSE = 5,
+    TFMINI_PLUS_PACK_LENGTH_RESTORE_FACTORY_SETTINGS_RESPONSE = 5,
+    TFMINI_PLUS_PACK_LENGTH_SAVE_SETTINGS_RESPONSE = 5,
+    TFMINI_PLUS_PACK_LENGTH_GET_DATA = 5,
+    TFMINI_PLUS_PACK_LENGTH_SET_FRAME_RATE = 6,
+    TFMINI_PLUS_PACK_LENGTH_SET_OUTPUT_FORMAT = 5,
+    TFMINI_PLUS_PACK_LENGTH_SET_BAUD_RATE = 8,
+    TFMINI_PLUS_PACK_LENGTH_ENABLE_DATA_OUTPUT = 5,
+    TFMINI_PLUS_PACK_LENGTH_SET_COMMUNICATION_INTERFACE = 5,
+    TFMINI_PLUS_PACK_LENGTH_SET_I2C_ADDRESS = 5,
+    TFMINI_PLUS_PACK_LENGTH_SET_IO_MODE = 9,
+    TFMINI_PLUS_PACK_LENGTH_DATA_RESPONSE = 9,
+    TFMINI_PLUS_PACK_LENGTH_VERSION_RESPONSE = 7
 };
 
-typedef enum TFMINI_PLUS_IO_MODE {
-    STANDARD = 0,
+enum TFMINI_PLUS_PACKET_POSITIONS {
+    TFMINI_PLUS_PACKET_POS_START = 0,
+    TFMINI_PLUS_PACKET_POS_LENGTH = 1,
+    TFMINI_PLUS_PACKET_POS_COMMAND = 2,
+};
 
-} tfminiplus_mode_t;
+typedef enum TFMINI_PLUS_IO_MODE { STANDARD = 0, IO_NEAR_HIGH_FAR_LOW = 1, IO_NEAR_LOW_FAR_HIGH = 2 } tfminiplus_mode_t;
 
 typedef enum TFMINI_PLUS_FRAMERATE {
     TFMINI_PLUS_FRAMERATE_0HZ = 0,
@@ -60,23 +81,67 @@ typedef union {
     };
 } tfminiplus_data_t;
 
-enum TFMINI_PLUS_OUTPUT_FORMAT { TFMINI_PLUS_OUTPUT_CM = 1, TFMINI_PLUS_OUTPUT_PIXHAWK = 2, TFMINI_PLUS_OUTPUT_MM = 6 };
+typedef union {
+    uint8_t raw[3];
+    struct {
+        uint8_t major;
+        uint8_t minor;
+        uint8_t revision;
+    };
+} tfminiplus_version_t;
 
-enum TFMINI_PLUS_COMMUNICATION_MODE { TFMINI_PLUS_UART = 0, TFMINI_PLUS_I2C = 1 };
+typedef enum TFMINI_PLUS_OUTPUT_FORMAT {
+    TFMINI_PLUS_OUTPUT_CM = 1,
+    TFMINI_PLUS_OUTPUT_PIXHAWK = 2,
+    TFMINI_PLUS_OUTPUT_MM = 6
+} tfminiplus_output_format_t;
+
+typedef enum TFMINI_PLUS_COMMUNICATION_MODE { TFMINI_PLUS_UART = 0, TFMINI_PLUS_I2C = 1 } tfminiplus_communication_mode;
 
 class TFminiPlus {
    public:
     bool begin(uint8_t address = 0x10);
     bool begin(Stream* stream);
 
-    String get_version();
-    bool set_framerate(tfminiplus_framerate_t framerate);
-
     bool set_i2c_address(uint8_t address);
+    tfminiplus_version_t get_version();
+    bool set_framerate(tfminiplus_framerate_t framerate);
+    bool set_baudrate(tfminiplus_baudrate_t baudrate);
+    bool set_output_format(tfminiplus_output_format_t format);
+
+    bool read_manual_reading(tfminiplus_data_t& data);
+    bool read_data(tfminiplus_data_t& data, bool in_mm_format = false);
+
+    bool set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance = 0, uint16_t hysteresis = 0);
+
+    bool set_communication_interface(tfminiplus_communication_mode mode);
+
+    bool enable_output(bool output_enabled);
+
+    bool save_settings();
+    bool reset_system();
+    bool factory_reset();
 
    private:
     uint8_t _address;
-    bool send(uint8_t* result);
+    uint8_t _communications_mode;
+    Stream* _stream;
+
+    bool send_command(tfminiplus_command_t command);
+    bool send_command(tfminiplus_command_t command, uint8_t* arguments, uint8_t size);
+
+    void do_i2c_wait();
+
+    bool TFminiPlus::read_data_response(tfminiplus_data_t& data);
+
+    bool send(uint8_t* input, uint8_t size);
+    bool send_uart(uint8_t* input, uint8_t size);
+    bool send_i2c(uint8_t* input, uint8_t size);
+
+    bool receive(uint8_t* output, uint8_t size);
+    bool receive_uart(uint8_t* output, uint8_t size);
+    bool receive_i2c(uint8_t* output, uint8_t size);
+    bool uart_receive_data(uint8_t* output, uint8_t size)
 };
 
 #endif
