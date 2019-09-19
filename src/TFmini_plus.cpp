@@ -218,30 +218,56 @@ void TFminiPlus::do_i2c_wait() {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-bool TFminiPlus::begin(uint8_t address = 0x10) {
+/**
+ * Start communication with the lidar in I2C mode.
+ * @param address: I2C address of the lidar. Defaults to 0x10.
+ */
+void TFminiPlus::begin(uint8_t address = 0x10) {
     _communications_mode = TFMINI_PLUS_I2C;
     _address = address & 0x7F;
 }
 
-bool TFminiPlus::begin(Stream* stream) {
+/**
+ * Start communication with the lidar in UART mode.
+ * @param stream: Pointer to a stream object for communication (eg. HardwareSerial or SoftwareSerial)
+ */
+void TFminiPlus::begin(Stream* stream) {
     _communications_mode = TFMINI_PLUS_UART;
     _stream = stream;
 }
 
+/**
+ * Set the I2C address of the lidar.
+ * This will change the slave address of the lidar so the device is mapped to a separate logical location.
+ * Changes will take effect immediately upon confirmation that the address has been received correctly.
+ *
+ * @param address: I2C slave address to change the lidar to. (0x01 - 0x7F)
+ * @param return: True if the address change was successful.
+ *
+ */
 bool TFminiPlus::set_i2c_address(uint8_t address) {
     bool result = false;
 
     send_command(TFMINI_PLUS_SET_I2C_ADDRESS, &address, TFMINI_PLUS_PACK_LENGTH_SET_I2C_ADDRESS);
     do_i2c_wait();
 
+    // Only commit the changes if the correct address is echoed back
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_SET_I2C_ADDRESS];
     if (receive(response, sizeof(response)) and response[3] == address) {
-        result = true;
-        _address = address;
+        result = save_settings();
+        if (result) {
+            _address = address;
+        }
     }
+
     return result;
 }
 
+/**
+ * Get the firmware version of the lidar.
+ *
+ * @return: Version information of lidar firmware. [major, minor, revision]
+ */
 tfminiplus_version_t TFminiPlus::get_version() {
     tfminiplus_version_t version;
 
@@ -258,6 +284,14 @@ tfminiplus_version_t TFminiPlus::get_version() {
     return version;
 }
 
+/**
+ * Set the framerate of the lidar.
+ * The datasheet recommends that the refresh rate stay below 100Hz when using I2C mode.
+ * Changes will not take effect until settings have been saved.
+ *
+ * @param framerate: Framerate to set the lidar to in Hz.
+ * @return: True if the framerate change was successfully received.
+ */
 bool TFminiPlus::set_framerate(tfminiplus_framerate_t framerate) {
     bool result = false;
     uint8_t argument[2];
@@ -273,6 +307,13 @@ bool TFminiPlus::set_framerate(tfminiplus_framerate_t framerate) {
     return result;
 }
 
+/**
+ * Set the baudrate of the lidar.
+ * Changes will not take effect until settings have been saved.
+ *
+ * @param baudrate: Baudrate to set UART communications to.
+ * @return: True if the baudrate change was successfully received.
+ */
 bool TFminiPlus::set_baudrate(tfminiplus_baudrate_t baudrate) {
     bool result = false;
     uint8_t argument[4];
@@ -284,6 +325,7 @@ bool TFminiPlus::set_baudrate(tfminiplus_baudrate_t baudrate) {
     send_command(TFMINI_PLUS_SET_BAUD_RATE, argument, TFMINI_PLUS_PACK_LENGTH_SET_BAUD_RATE);
     do_i2c_wait();
 
+    // Verify the echoed baudrate
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_SET_BAUD_RATE];
     if (receive(response, sizeof(response))) {
         uint32_t echoed_baudrate = response[3] + (response[4] << 8) + (response[5] << 16) + (response[6] << 24);
@@ -294,6 +336,14 @@ bool TFminiPlus::set_baudrate(tfminiplus_baudrate_t baudrate) {
     return result;
 }
 
+/**
+ * Set the output format of the lidar.
+ * The output format changes the output units or enables a pixhawk-compatible stream.
+ * Changes must be saved to take effect.
+ *
+ * @param format: Format option to change the lidar output to.
+ * @result: True if the format change was received succesfully.
+ */
 bool TFminiPlus::set_output_format(tfminiplus_output_format_t format) {
     bool result = false;
 
@@ -308,21 +358,46 @@ bool TFminiPlus::set_output_format(tfminiplus_output_format_t format) {
     return result;
 }
 
+/**
+ * Take a manual reading of the lidar.
+ * This method is useful when the framerate has been changed to 0 Hz
+ * and readings are taken on an on-demand basis.
+ *
+ * @param data: Data container to read the lidar output into.
+ * @return: True if a data output frame was received successfully.
+ */
 bool TFminiPlus::read_manual_reading(tfminiplus_data_t& data) {
     send_command(TFMINI_PLUS_TRIGGER_DETECTION);
     do_i2c_wait();
     return read_data_response(data);
 }
 
+/**
+ * Read a data frame from the lidar.
+ * If using the UART interface, frames are continually sent and do not need to be specifically requested.
+ *
+ * @param data: Data container to read output frame into.
+ * @param in_mm_format: True to request the data frame in mm units (I2C only).
+ * @return: True if the data frame was received successfully.
+ */
 bool TFminiPlus::read_data(tfminiplus_data_t& data, bool in_mm_format) {
     if (_communications_mode == TFMINI_PLUS_I2C)
         send_command(TFMINI_PLUS_GET_DATA, (uint8_t*)&in_mm_format, TFMINI_PLUS_PACK_LENGTH_GET_DATA);
     return read_data_response(data);
 }
 
+/**
+ * Read in a response frame from the lidar.
+ * Data frames are read in normally with I2C mode after a request.
+ * In UART mode, frames are sent in when available.
+ *
+ * @param data: Data frame to read the lidar output into.
+ * @return: True if the response was received correctly.
+ */
 bool TFminiPlus::read_data_response(tfminiplus_data_t& data) {
     bool result = false;
 
+    // Grab the data
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_DATA_RESPONSE];
     if (_communications_mode == TFMINI_PLUS_UART) {
         result = uart_receive_data(response, sizeof(response));
@@ -330,15 +405,29 @@ bool TFminiPlus::read_data_response(tfminiplus_data_t& data) {
         result = receive(response, sizeof(response));
     }
 
+    // Put the data into the proper format
     if (result) {
         data.distance = response[2] + (response[3] << 8);
         data.strength = response[4] + (response[5] << 8);
-        data.temperature = response[6] + (response[7] << 8);
+        data.temperature = (response[6] + (response[7] << 8)) / 8.0 - 256;
     }
 
     return result;
 }
 
+/**
+ * Set the IO mode of the lidar.
+ * Changes will not occur until settings have been saved.
+ * Modes:
+ *  0 - Standard: Output is transmitted over UART or I2C.
+ *  1 - IO LN/HF - Output pin is high if the measured distance is above the defined distance; otherwise low.
+ *  2 - IO HN/LF - Output pin is low if the measured distance is above the defined distance; otherwise high.
+ *
+ * @param mode: Output mode of the lidar [0-2].
+ * @param critical_distance: Threshold distance in cm for the near/far zones when using IO modes.
+ * @param hysteresis: Hysteresis in cm used when switching between near/far zones when using IO modes.
+ * @return: True if the mode change was received successfully.
+ */
 bool TFminiPlus::set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance = 0, uint16_t hysteresis = 0) {
     uint8_t arguments[5];
     arguments[0] = mode;
@@ -350,6 +439,14 @@ bool TFminiPlus::set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance 
     send_command(TFMINI_PLUS_SET_IO_MODE, arguments, TFMINI_PLUS_PACK_LENGTH_SET_IO_MODE);
 }
 
+/**
+ * Set the communication mode for the lidar.
+ * Changes are applied immediately.
+ * The library will switch to use the mode specified if the change was successfully applied.
+ *
+ * @param mode: Communication mode. [UART, I2C]
+ * @return: True if the settings were saved correctly.
+ */
 bool TFminiPlus::set_communication_interface(tfminiplus_communication_mode mode) {
     send_command(TFMINI_PLUS_SET_COMMUNICATION_INTERFACE, (uint8_t*)&mode,
                  TFMINI_PLUS_PACK_LENGTH_SET_COMMUNICATION_INTERFACE);
@@ -358,6 +455,15 @@ bool TFminiPlus::set_communication_interface(tfminiplus_communication_mode mode)
     }
 }
 
+/**
+ * Enable or disable the lidar output.
+ * The datasheet is unclear as to whether the lidar will still respond to communication or data requests if output
+ * is disabled.
+ * Changes must be saved to be applied.
+ *
+ * @param output_enabled: True to enable output; False to disable.
+ * @return: True if the command was received successfully.
+ */
 bool TFminiPlus::enable_output(bool output_enabled) {
     bool result = false;
 
@@ -371,6 +477,12 @@ bool TFminiPlus::enable_output(bool output_enabled) {
     return result;
 }
 
+/**
+ * Apply written settings to the lidar.
+ * The datasheet is unclear as to whether saved settings are persistent across power cycles.
+ *
+ * @return: True is settings were save successfully.
+ */
 bool TFminiPlus::save_settings() {
     bool result = false;
 
@@ -386,17 +498,32 @@ bool TFminiPlus::save_settings() {
     return result;
 }
 
+/**
+ * Reset the lidar.
+ * Not sure what this does exactly...
+ *
+ * @return: True if reset occurred?
+ */
 bool TFminiPlus::reset_system() {
     bool result = false;
+
     send_command(TFMINI_PLUS_SYSTEM_RESET);
     do_i2c_wait();
+
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_SYSTEM_RESET_RESPONSE];
     if (receive(response, sizeof(response))) {
         if (response[3] == 0) result = true;
     }
+
     return result;
 }
 
+/**
+ * Reset the lidar's settings back to their factory defaults.
+ * The factory reset does not affect the communication mode.
+ *
+ * @return: True if the factory reset was successful.
+ */
 bool TFminiPlus::factory_reset() {
     bool result = false;
 
@@ -408,4 +535,20 @@ bool TFminiPlus::factory_reset() {
         if (response[3] == 0) result = true;
     }
     return result;
+}
+
+/**
+ * Calculate the effective accuracy of the lidar.
+ *
+ * @param strength: Strength of the last reading.
+ * @param frequency: Framerate of the lidar.
+ * @return: Effective accuracy of the lidar in cm.
+ */
+float TFminiPlus::get_effective_accuracy(uint16_t strength, uint16_t frequency) {
+    float x = log10(strength);
+    float y = log10(frequency);
+
+    float ranging_accuracy =
+        TFMINI_PLUS_P00 + TFMINI_PLUS_P10 * x + TFMINI_PLUS_P01 * y + TFMINI_PLUS_P20 * x * x + TFMINI_PLUS_P11 * x * y;
+    return ranging_accuracy;
 }
