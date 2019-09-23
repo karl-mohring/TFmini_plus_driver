@@ -1,0 +1,19 @@
+{
+  "name": "TFmini_plus_driver",
+  "keywords": "lidar, tfmini, tfmini plus, sensor, i2c, serial",
+  "description": "Arduino Library for the Benewake TFmini Plus lidar with I2C/UART support",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Leenix/TFmini_plus_driver.git"
+  },
+
+  "authors": [{
+    "name": "Karl Mohring",
+    "email": "karl.mohring@pm.me",
+    "maintainer": true
+  }],
+
+  "version": "1.0.0",
+  "frameworks": "arduino",
+  "platforms": "*"
+}
