@@ -1,5 +1,4 @@
 #include <TFmini_plus.h>
-#include <ArduinoLog.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -18,13 +17,6 @@ bool TFminiPlus::send(uint8_t *input, uint8_t size)
         result = send_uart(input, size);
     if (_communications_mode == TFMINI_PLUS_I2C)
         result = send_i2c(input, size);
-
-    String input_string;
-    for (size_t i = 0; i < size; i++)
-    {
-        input_string += String(input[i], HEX) + " ";
-    }
-    Log.notice("Sending: %s\n", input_string.c_str());
 
     return result;
 }
@@ -87,7 +79,7 @@ bool TFminiPlus::send_command(tfminiplus_command_t command, uint8_t *arguments, 
     // Put arguments into the packet as-is, assuming the endianess has been handled elsewhere
     if (size > TFMINI_PLUS_MINIMUM_PACKET_SIZE)
     {
-        for (size_t i = 0; i < size - TFMINI_PLUS_MINIMUM_PACKET_SIZE; i++)
+        for (uint8_t i = 0; i < size - TFMINI_PLUS_MINIMUM_PACKET_SIZE; i++)
         {
             packet[TFMINI_PLUS_MINIMUM_PACKET_SIZE - 1 + i] = arguments[i];
         }
@@ -124,27 +116,17 @@ bool TFminiPlus::send_command(tfminiplus_command_t command)
 bool TFminiPlus::receive(uint8_t *output, uint8_t size)
 {
     bool result = false;
+    uint8_t bytes_received = 0;
 
     // Grab data from stream
     if (_communications_mode == TFMINI_PLUS_UART)
-        result = receive_uart(output, size);
+        bytes_received = receive_uart(output, size);
     if (_communications_mode == TFMINI_PLUS_I2C)
-        result = receive_i2c(output, size);
+        bytes_received = receive_i2c(output, size);
+    result = (bytes_received == size);
 
     // Data is valid if the packet length matches the received length value and if the checksum matches
-    if (result)
-    {
-        result = size == output[TFMINI_PLUS_PACKET_POS_LENGTH];
-        result &= compare_checksum(output, size);
-    }
-
-    String output_string;
-    for (size_t i = 0; i < size; i++)
-    {
-        output_string += String(output[i], HEX) + " ";
-    }
-    Log.notice("Received: %s\n", output_string.c_str());
-
+    result &= compare_checksum(output, size);
     return result;
 }
 
@@ -155,7 +137,7 @@ bool TFminiPlus::receive(uint8_t *output, uint8_t size)
  * @param size: Number of bytes expected to be read.
  * @return: True if the expected number of bytes was read.
  */
-bool TFminiPlus::receive_uart(uint8_t *output, uint8_t size, unsigned long timeout)
+uint8_t TFminiPlus::receive_uart(uint8_t *output, uint8_t size, unsigned long timeout)
 {
     bool packet_start_found = false;
     unsigned long start_time = millis();
@@ -178,10 +160,8 @@ bool TFminiPlus::receive_uart(uint8_t *output, uint8_t size, unsigned long timeo
             }
         }
     }
-    if (bytes_read != size)
-        Log.error("Size mismatch\n");
 
-    return bytes_read == size;
+    return bytes_read;
 }
 
 /**
@@ -191,18 +171,19 @@ bool TFminiPlus::receive_uart(uint8_t *output, uint8_t size, unsigned long timeo
  * @param size: Number of bytes expected to be read.
  * @return: True if the expected number of bytes was read.
  */
-bool TFminiPlus::receive_i2c(uint8_t *output, uint8_t size)
+uint8_t TFminiPlus::receive_i2c(uint8_t *output, uint8_t size)
 {
     Wire.requestFrom(_address, size);
 
-    size_t bytes_read;
-    for (bytes_read = 0; (bytes_read < size) and Wire.available(); bytes_read++)
+    uint8_t bytes_read = 0;
+    for (size_t i = 0; (i < size) and Wire.available(); i++)
     {
         uint8_t c = Wire.read();
-        output[bytes_read] = c;
+        output[i] = c;
+        bytes_read++;
     }
 
-    return bytes_read == size;
+    return bytes_read;
 }
 
 /**
@@ -255,8 +236,6 @@ bool TFminiPlus::compare_checksum(uint8_t *data, uint8_t size)
     uint8_t checksum = calculate_checksum(data, size - 1);
     bool checksums_match = checksum == data[size - 1];
 
-    Log.verbose("Checksum: (%T) %X vs %X\n", checksums_match, checksum, data[size - 1]);
-
     return checksums_match;
 }
 
@@ -285,8 +264,8 @@ uint8_t TFminiPlus::calculate_checksum(uint8_t *data, uint8_t size)
  */
 void TFminiPlus::do_i2c_wait()
 {
-    //if (_communications_mode == TFMINI_PLUS_I2C)
-    delay(100);
+    if (_communications_mode == TFMINI_PLUS_I2C)
+        delay(100);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -414,7 +393,6 @@ bool TFminiPlus::set_baudrate(tfminiplus_baudrate_t baudrate)
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_SET_BAUD_RATE];
     if (receive(response, sizeof(response)))
     {
-        uint32_t echoed_baudrate = response[3] + (response[4] << 8) + (response[5] << 16) + (response[6] << 24);
         if (argument[0] == response[3] and argument[1] == response[4] and argument[2] == response[5] and
             argument[3] == response[6])
             result = true;
@@ -502,19 +480,17 @@ bool TFminiPlus::read_data_response(tfminiplus_data_t &data)
     }
 
     // Put the data into the proper format
-    if (result)
-    {
-        result = compare_checksum(response, sizeof(response));
 
-        data.distance = response[2] + (response[3] << 8);
-        result &= data.distance > 0;
+    result = compare_checksum(response, sizeof(response));
 
-        data.strength = response[4] + (response[5] << 8);
-        result &= data.strength > 0 and data.strength != 65535;
+    data.distance = response[2] + (response[3] << 8);
+    result &= data.distance > 0;
 
-        data.temperature = (response[6] + (response[7] << 8)) / 8.0 - 256;
-        result &= data.temperature < 100;
-    }
+    data.strength = response[4] + (response[5] << 8);
+    result &= data.strength > 0 and data.strength != 65535;
+
+    data.temperature = (response[6] + (response[7] << 8)) / 8.0 - 256;
+    result &= data.temperature < 100;
 
     return result;
 }
@@ -554,12 +530,16 @@ bool TFminiPlus::set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance,
  */
 bool TFminiPlus::set_communication_interface(tfminiplus_communication_mode mode)
 {
+    bool result;
     send_command(TFMINI_PLUS_SET_COMMUNICATION_INTERFACE, (uint8_t *)&mode,
                  TFMINI_PLUS_PACK_LENGTH_SET_COMMUNICATION_INTERFACE);
-    if (save_settings())
+
+    result = save_settings();
+    if (result)
     {
         _communications_mode = mode;
     }
+    return result;
 }
 
 /**

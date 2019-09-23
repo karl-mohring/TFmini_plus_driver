@@ -145,7 +145,7 @@ public:
     bool set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance = 0, uint16_t hysteresis = 0);
 
     bool read_manual_reading(tfminiplus_data_t &data);
-    bool read_data(tfminiplus_data_t &data, bool in_mm_format = false);
+    bool read_data(tfminiplus_data_t &data, bool in_mm_format = true);
     float get_effective_accuracy(uint16_t strength, uint16_t frequency);
 
     void dump_serial_cache();
@@ -164,8 +164,8 @@ private:
     bool send_command(tfminiplus_command_t command);
 
     bool receive(uint8_t *output, uint8_t size);
-    bool receive_uart(uint8_t *output, uint8_t size, unsigned long timeout = 10);
-    bool receive_i2c(uint8_t *output, uint8_t size);
+    uint8_t receive_uart(uint8_t *output, uint8_t size, unsigned long timeout = 10);
+    uint8_t receive_i2c(uint8_t *output, uint8_t size);
     bool uart_receive_data(uint8_t *output, uint8_t size, unsigned long timeout = 10);
     bool read_data_response(tfminiplus_data_t &data);
 
