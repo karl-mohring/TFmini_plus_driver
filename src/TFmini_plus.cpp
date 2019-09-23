@@ -10,13 +10,10 @@
  * @param size: Number of bytes to send.
  * @return: True for successful transmission.
  */
-bool TFminiPlus::send(uint8_t *input, uint8_t size)
-{
+bool TFminiPlus::send(uint8_t *input, uint8_t size) {
     bool result = false;
-    if (_communications_mode == TFMINI_PLUS_UART)
-        result = send_uart(input, size);
-    if (_communications_mode == TFMINI_PLUS_I2C)
-        result = send_i2c(input, size);
+    if (_communications_mode == TFMINI_PLUS_UART) result = send_uart(input, size);
+    if (_communications_mode == TFMINI_PLUS_I2C) result = send_i2c(input, size);
 
     return result;
 }
@@ -28,9 +25,9 @@ bool TFminiPlus::send(uint8_t *input, uint8_t size)
  * @param size: Number of bytes to send.
  * @return: True if the correct number of bytes were sent.
  */
-bool TFminiPlus::send_uart(uint8_t *input, uint8_t size)
-{
+bool TFminiPlus::send_uart(uint8_t *input, uint8_t size) {
     // Burn any other bytes waiting in the receive buffer
+    dump_serial_cache();
     dump_serial_cache();
 
     uint8_t bytes_sent = _stream->write(input, size) == size;
@@ -45,8 +42,7 @@ bool TFminiPlus::send_uart(uint8_t *input, uint8_t size)
  * @param size: Number of bytes to send.
  * @return: True if the correct number of bytes were sent.
  */
-bool TFminiPlus::send_i2c(uint8_t *input, uint8_t size)
-{
+bool TFminiPlus::send_i2c(uint8_t *input, uint8_t size) {
     Wire.beginTransmission(_address);
     uint8_t bytes_sent = Wire.write(input, size);
     bool acknowledged = Wire.endTransmission();
@@ -68,8 +64,7 @@ bool TFminiPlus::send_i2c(uint8_t *input, uint8_t size)
  * @param size: Total number of bytes to send, including header and checksum.
  * @return: True if the transmission was successful.
  */
-bool TFminiPlus::send_command(tfminiplus_command_t command, uint8_t *arguments, uint8_t size)
-{
+bool TFminiPlus::send_command(tfminiplus_command_t command, uint8_t *arguments, uint8_t size) {
     bool result;
     uint8_t packet[size];
     packet[0] = TFMINI_PLUS_FRAME_START;
@@ -77,10 +72,8 @@ bool TFminiPlus::send_command(tfminiplus_command_t command, uint8_t *arguments, 
     packet[2] = command;
 
     // Put arguments into the packet as-is, assuming the endianess has been handled elsewhere
-    if (size > TFMINI_PLUS_MINIMUM_PACKET_SIZE)
-    {
-        for (uint8_t i = 0; i < size - TFMINI_PLUS_MINIMUM_PACKET_SIZE; i++)
-        {
+    if (size > TFMINI_PLUS_MINIMUM_PACKET_SIZE) {
+        for (uint8_t i = 0; i < size - TFMINI_PLUS_MINIMUM_PACKET_SIZE; i++) {
             packet[TFMINI_PLUS_MINIMUM_PACKET_SIZE - 1 + i] = arguments[i];
         }
     }
@@ -98,8 +91,7 @@ bool TFminiPlus::send_command(tfminiplus_command_t command, uint8_t *arguments, 
  * @param command: 8-bit command to send; see TFMINI_PLUS_COMMANDS.
  * @return: True if the transmission was successful.
  */
-bool TFminiPlus::send_command(tfminiplus_command_t command)
-{
+bool TFminiPlus::send_command(tfminiplus_command_t command) {
     return send_command(command, 0, TFMINI_PLUS_MINIMUM_PACKET_SIZE);
 }
 
@@ -113,16 +105,13 @@ bool TFminiPlus::send_command(tfminiplus_command_t command)
  * @param size: Number of bytes expected to receive.
  * @return: True if the received length and checksum is valid
  */
-bool TFminiPlus::receive(uint8_t *output, uint8_t size)
-{
+bool TFminiPlus::receive(uint8_t *output, uint8_t size) {
     bool result = false;
     uint8_t bytes_received = 0;
 
     // Grab data from stream
-    if (_communications_mode == TFMINI_PLUS_UART)
-        bytes_received = receive_uart(output, size);
-    if (_communications_mode == TFMINI_PLUS_I2C)
-        bytes_received = receive_i2c(output, size);
+    if (_communications_mode == TFMINI_PLUS_UART) bytes_received = receive_uart(output, size);
+    if (_communications_mode == TFMINI_PLUS_I2C) bytes_received = receive_i2c(output, size);
     result = (bytes_received == size);
 
     // Data is valid if the packet length matches the received length value and if the checksum matches
@@ -137,21 +126,16 @@ bool TFminiPlus::receive(uint8_t *output, uint8_t size)
  * @param size: Number of bytes expected to be read.
  * @return: True if the expected number of bytes was read.
  */
-uint8_t TFminiPlus::receive_uart(uint8_t *output, uint8_t size, unsigned long timeout)
-{
+uint8_t TFminiPlus::receive_uart(uint8_t *output, uint8_t size, unsigned long timeout) {
     bool packet_start_found = false;
     unsigned long start_time = millis();
     uint8_t bytes_read = 0;
 
     // Discard data until a valid packet header is found (0x5a)
-    while ((millis() - start_time) < timeout and not packet_start_found)
-    {
-        if (_stream->available() >= size)
-        {
-            if (_stream->read() == TFMINI_PLUS_FRAME_START)
-            {
-                if (_stream->read() == size)
-                {
+    while ((millis() - start_time) < timeout and not packet_start_found) {
+        if (_stream->available() >= size) {
+            if (_stream->read() == TFMINI_PLUS_FRAME_START) {
+                if (_stream->read() == size) {
                     packet_start_found = true;
                     output[0] = TFMINI_PLUS_FRAME_START;
                     output[1] = size;
@@ -171,13 +155,11 @@ uint8_t TFminiPlus::receive_uart(uint8_t *output, uint8_t size, unsigned long ti
  * @param size: Number of bytes expected to be read.
  * @return: True if the expected number of bytes was read.
  */
-uint8_t TFminiPlus::receive_i2c(uint8_t *output, uint8_t size)
-{
+uint8_t TFminiPlus::receive_i2c(uint8_t *output, uint8_t size) {
     Wire.requestFrom(_address, size);
 
     uint8_t bytes_read = 0;
-    for (size_t i = 0; (i < size) and Wire.available(); i++)
-    {
+    for (size_t i = 0; (i < size) and Wire.available(); i++) {
         uint8_t c = Wire.read();
         output[i] = c;
         bytes_read++;
@@ -196,20 +178,15 @@ uint8_t TFminiPlus::receive_i2c(uint8_t *output, uint8_t size)
  * @param size: Number of bytes that are expected to be received
  * @return: True if the expected number of bytes were received.
  */
-bool TFminiPlus::uart_receive_data(uint8_t *output, uint8_t size, unsigned long timeout)
-{
+bool TFminiPlus::uart_receive_data(uint8_t *output, uint8_t size, unsigned long timeout) {
     bool packet_start_found = false;
     unsigned long start_time = millis();
 
     // Discard data until a valid packet header is found (0x5959)
-    while ((millis() - start_time) < timeout and not packet_start_found)
-    {
-        if (_stream->available() >= 9)
-        {
-
+    while ((millis() - start_time) < timeout and not packet_start_found) {
+        if (_stream->available() >= 9) {
             if (_stream->read() == TFMINI_PLUS_RESPONSE_FRAME_HEADER and
-                _stream->read() == TFMINI_PLUS_RESPONSE_FRAME_HEADER)
-            {
+                _stream->read() == TFMINI_PLUS_RESPONSE_FRAME_HEADER) {
                 output[0] = TFMINI_PLUS_RESPONSE_FRAME_HEADER;
                 output[1] = TFMINI_PLUS_RESPONSE_FRAME_HEADER;
                 packet_start_found = true;
@@ -231,8 +208,7 @@ bool TFminiPlus::uart_receive_data(uint8_t *output, uint8_t size, unsigned long 
  * @param size: Number of bytes contained in the packet, including headers and checksum.
  * @return: True if the checksums match.
  */
-bool TFminiPlus::compare_checksum(uint8_t *data, uint8_t size)
-{
+bool TFminiPlus::compare_checksum(uint8_t *data, uint8_t size) {
     uint8_t checksum = calculate_checksum(data, size - 1);
     bool checksums_match = checksum == data[size - 1];
 
@@ -246,12 +222,10 @@ bool TFminiPlus::compare_checksum(uint8_t *data, uint8_t size)
  * @param size: Number of bytes in container.
  * @return: Checksum of data in the container.
  */
-uint8_t TFminiPlus::calculate_checksum(uint8_t *data, uint8_t size)
-{
+uint8_t TFminiPlus::calculate_checksum(uint8_t *data, uint8_t size) {
     uint8_t checksum = 0;
 
-    for (size_t i = 0; i < size; i++)
-    {
+    for (size_t i = 0; i < size; i++) {
         checksum += data[i];
     }
     return checksum;
@@ -262,10 +236,8 @@ uint8_t TFminiPlus::calculate_checksum(uint8_t *data, uint8_t size)
  * This wait is only required when using the I2C bus.
  * This wait is also not required when requesting a data packet on either communication mode.
  */
-void TFminiPlus::do_i2c_wait()
-{
-    if (_communications_mode == TFMINI_PLUS_I2C)
-        delay(100);
+void TFminiPlus::do_i2c_wait() {
+    if (_communications_mode == TFMINI_PLUS_I2C) delay(100);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -274,8 +246,7 @@ void TFminiPlus::do_i2c_wait()
  * Start communication with the lidar in I2C mode.
  * @param address: I2C address of the lidar. Defaults to 0x10.
  */
-void TFminiPlus::begin(uint8_t address)
-{
+void TFminiPlus::begin(uint8_t address) {
     _communications_mode = TFMINI_PLUS_I2C;
     _address = address & 0x7F;
 }
@@ -284,8 +255,7 @@ void TFminiPlus::begin(uint8_t address)
  * Start communication with the lidar in UART mode.
  * @param stream: Pointer to a stream object for communication (eg. HardwareSerial or SoftwareSerial)
  */
-void TFminiPlus::begin(Stream *stream)
-{
+void TFminiPlus::begin(Stream *stream) {
     _communications_mode = TFMINI_PLUS_UART;
     _stream = stream;
     _stream->flush();
@@ -300,8 +270,7 @@ void TFminiPlus::begin(Stream *stream)
  * @param return: True if the address change was successful.
  *
  */
-bool TFminiPlus::set_i2c_address(uint8_t address)
-{
+bool TFminiPlus::set_i2c_address(uint8_t address) {
     bool result = false;
 
     send_command(TFMINI_PLUS_SET_I2C_ADDRESS, &address, TFMINI_PLUS_PACK_LENGTH_SET_I2C_ADDRESS);
@@ -309,11 +278,9 @@ bool TFminiPlus::set_i2c_address(uint8_t address)
 
     // Only commit the changes if the correct address is echoed back
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_SET_I2C_ADDRESS];
-    if (receive(response, sizeof(response)) and response[3] == address)
-    {
+    if (receive(response, sizeof(response)) and response[3] == address) {
         result = save_settings();
-        if (result)
-        {
+        if (result) {
             _address = address;
         }
     }
@@ -326,16 +293,14 @@ bool TFminiPlus::set_i2c_address(uint8_t address)
  *
  * @return: Version information of lidar firmware. [major, minor, revision]
  */
-tfminiplus_version_t TFminiPlus::get_version()
-{
+tfminiplus_version_t TFminiPlus::get_version() {
     tfminiplus_version_t version;
 
     send_command(TFMINI_PLUS_GET_VERSION);
     do_i2c_wait();
 
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_VERSION_RESPONSE];
-    if (receive(response, sizeof(response)) and response[TFMINI_PLUS_PACKET_POS_COMMAND] == TFMINI_PLUS_GET_VERSION)
-    {
+    if (receive(response, sizeof(response)) and response[TFMINI_PLUS_PACKET_POS_COMMAND] == TFMINI_PLUS_GET_VERSION) {
         version.revision = response[3];
         version.minor = response[4];
         version.major = response[5];
@@ -352,8 +317,7 @@ tfminiplus_version_t TFminiPlus::get_version()
  * @param framerate: Framerate to set the lidar to in Hz.
  * @return: True if the framerate change was successfully received.
  */
-bool TFminiPlus::set_framerate(tfminiplus_framerate_t framerate)
-{
+bool TFminiPlus::set_framerate(tfminiplus_framerate_t framerate) {
     bool result = false;
     uint8_t argument[2];
     argument[0] = framerate & 0xFF;
@@ -362,10 +326,8 @@ bool TFminiPlus::set_framerate(tfminiplus_framerate_t framerate)
     do_i2c_wait();
 
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_SET_FRAME_RATE];
-    if (receive(response, sizeof(response)))
-    {
-        if (argument[0] == response[3] and argument[1] == response[4])
-            result = true;
+    if (receive(response, sizeof(response))) {
+        if (argument[0] == response[3] and argument[1] == response[4]) result = true;
     }
     return result;
 }
@@ -377,8 +339,7 @@ bool TFminiPlus::set_framerate(tfminiplus_framerate_t framerate)
  * @param baudrate: Baudrate to set UART communications to.
  * @return: True if the baudrate change was successfully received.
  */
-bool TFminiPlus::set_baudrate(tfminiplus_baudrate_t baudrate)
-{
+bool TFminiPlus::set_baudrate(tfminiplus_baudrate_t baudrate) {
     bool result = false;
     uint8_t argument[4];
     argument[0] = baudrate & 0xFF;
@@ -391,8 +352,7 @@ bool TFminiPlus::set_baudrate(tfminiplus_baudrate_t baudrate)
 
     // Verify the echoed baudrate
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_SET_BAUD_RATE];
-    if (receive(response, sizeof(response)))
-    {
+    if (receive(response, sizeof(response))) {
         if (argument[0] == response[3] and argument[1] == response[4] and argument[2] == response[5] and
             argument[3] == response[6])
             result = true;
@@ -408,18 +368,15 @@ bool TFminiPlus::set_baudrate(tfminiplus_baudrate_t baudrate)
  * @param format: Format option to change the lidar output to.
  * @result: True if the format change was received succesfully.
  */
-bool TFminiPlus::set_output_format(tfminiplus_output_format_t format)
-{
+bool TFminiPlus::set_output_format(tfminiplus_output_format_t format) {
     bool result = false;
 
     send_command(TFMINI_PLUS_SET_OUTPUT_FORMAT, (uint8_t *)&format, TFMINI_PLUS_PACK_LENGTH_SET_OUTPUT_FORMAT);
     do_i2c_wait();
 
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_SET_OUTPUT_FORMAT];
-    if (receive(response, sizeof(response)))
-    {
-        if (format == response[3])
-            result = true;
+    if (receive(response, sizeof(response))) {
+        if (format == response[3]) result = true;
     }
 
     return result;
@@ -433,8 +390,7 @@ bool TFminiPlus::set_output_format(tfminiplus_output_format_t format)
  * @param data: Data container to read the lidar output into.
  * @return: True if a data output frame was received successfully.
  */
-bool TFminiPlus::read_manual_reading(tfminiplus_data_t &data)
-{
+bool TFminiPlus::read_manual_reading(tfminiplus_data_t &data) {
     send_command(TFMINI_PLUS_TRIGGER_DETECTION);
     do_i2c_wait();
     return read_data_response(data);
@@ -448,8 +404,7 @@ bool TFminiPlus::read_manual_reading(tfminiplus_data_t &data)
  * @param in_mm_format: True to request the data frame in mm units (I2C only).
  * @return: True if the data frame was received successfully.
  */
-bool TFminiPlus::read_data(tfminiplus_data_t &data, bool in_mm_format)
-{
+bool TFminiPlus::read_data(tfminiplus_data_t &data, bool in_mm_format) {
     if (_communications_mode == TFMINI_PLUS_I2C)
         send_command(TFMINI_PLUS_GET_DATA, (uint8_t *)&in_mm_format, TFMINI_PLUS_PACK_LENGTH_GET_DATA);
     do_i2c_wait();
@@ -464,18 +419,14 @@ bool TFminiPlus::read_data(tfminiplus_data_t &data, bool in_mm_format)
  * @param data: Data frame to read the lidar output into.
  * @return: True if the response was received correctly.
  */
-bool TFminiPlus::read_data_response(tfminiplus_data_t &data)
-{
+bool TFminiPlus::read_data_response(tfminiplus_data_t &data) {
     bool result;
 
     // Grab the data
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_DATA_RESPONSE];
-    if (_communications_mode == TFMINI_PLUS_UART)
-    {
+    if (_communications_mode == TFMINI_PLUS_UART) {
         result = uart_receive_data(response, sizeof(response));
-    }
-    else
-    {
+    } else {
         result = receive(response, sizeof(response));
     }
 
@@ -508,8 +459,7 @@ bool TFminiPlus::read_data_response(tfminiplus_data_t &data)
  * @param hysteresis: Hysteresis in cm used when switching between near/far zones when using IO modes.
  * @return: True if the mode change was received successfully.
  */
-bool TFminiPlus::set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance, uint16_t hysteresis)
-{
+bool TFminiPlus::set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance, uint16_t hysteresis) {
     uint8_t arguments[5];
     arguments[0] = mode;
     arguments[1] = uint8_t(critical_distance);
@@ -528,15 +478,13 @@ bool TFminiPlus::set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance,
  * @param mode: Communication mode. [UART, I2C]
  * @return: True if the settings were saved correctly.
  */
-bool TFminiPlus::set_communication_interface(tfminiplus_communication_mode mode)
-{
+bool TFminiPlus::set_communication_interface(tfminiplus_communication_mode_t mode) {
     bool result;
     send_command(TFMINI_PLUS_SET_COMMUNICATION_INTERFACE, (uint8_t *)&mode,
                  TFMINI_PLUS_PACK_LENGTH_SET_COMMUNICATION_INTERFACE);
 
     result = save_settings();
-    if (result)
-    {
+    if (result) {
         _communications_mode = mode;
     }
     return result;
@@ -551,18 +499,16 @@ bool TFminiPlus::set_communication_interface(tfminiplus_communication_mode mode)
  * @param output_enabled: True to enable output; False to disable.
  * @return: True if the command was received successfully.
  */
-bool TFminiPlus::enable_output(bool output_enabled)
-{
+bool TFminiPlus::enable_output(bool output_enabled) {
     bool result = false;
 
-    send_command(TFMINI_PLUS_ENABLE_DATA_OUTPUT, (uint8_t *)&output_enabled, TFMINI_PLUS_PACK_LENGTH_ENABLE_DATA_OUTPUT);
+    send_command(TFMINI_PLUS_ENABLE_DATA_OUTPUT, (uint8_t *)&output_enabled,
+                 TFMINI_PLUS_PACK_LENGTH_ENABLE_DATA_OUTPUT);
     do_i2c_wait();
 
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_ENABLE_DATA_OUTPUT];
-    if (receive(response, sizeof(response)))
-    {
-        if (output_enabled == response[3])
-            result = true;
+    if (receive(response, sizeof(response))) {
+        if (output_enabled == response[3]) result = true;
     }
     return result;
 }
@@ -573,18 +519,15 @@ bool TFminiPlus::enable_output(bool output_enabled)
  *
  * @return: True is settings were save successfully.
  */
-bool TFminiPlus::save_settings()
-{
+bool TFminiPlus::save_settings() {
     bool result = false;
 
     send_command(TFMINI_PLUS_SAVE_SETTINGS);
     do_i2c_wait();
 
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_SAVE_SETTINGS_RESPONSE];
-    if (receive(response, sizeof(response)))
-    {
-        if (response[3] == 0)
-        {
+    if (receive(response, sizeof(response))) {
+        if (response[3] == 0) {
             result = true;
         }
     }
@@ -597,18 +540,15 @@ bool TFminiPlus::save_settings()
  *
  * @return: True if reset occurred?
  */
-bool TFminiPlus::reset_system()
-{
+bool TFminiPlus::reset_system() {
     bool result = false;
 
     send_command(TFMINI_PLUS_SYSTEM_RESET);
     do_i2c_wait();
 
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_SYSTEM_RESET_RESPONSE];
-    if (receive(response, sizeof(response)))
-    {
-        if (response[3] == 0)
-            result = true;
+    if (receive(response, sizeof(response))) {
+        if (response[3] == 0) result = true;
     }
 
     return result;
@@ -620,18 +560,15 @@ bool TFminiPlus::reset_system()
  *
  * @return: True if the factory reset was successful.
  */
-bool TFminiPlus::factory_reset()
-{
+bool TFminiPlus::factory_reset() {
     bool result = false;
 
     send_command(TFMINI_PLUS_RESTORE_FACTORY_SETTINGS);
     do_i2c_wait();
 
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_RESTORE_FACTORY_SETTINGS_RESPONSE];
-    if (receive(response, sizeof(response)))
-    {
-        if (response[3] == 0)
-            result = true;
+    if (receive(response, sizeof(response))) {
+        if (response[3] == 0) result = true;
     }
     return result;
 }
@@ -643,8 +580,7 @@ bool TFminiPlus::factory_reset()
  * @param frequency: Framerate of the lidar.
  * @return: Effective accuracy of the lidar in cm.
  */
-float TFminiPlus::get_effective_accuracy(uint16_t strength, uint16_t frequency)
-{
+float TFminiPlus::get_effective_accuracy(uint16_t strength, uint16_t frequency) {
     float x = log10(strength);
     float y = log10(frequency);
 
@@ -653,10 +589,8 @@ float TFminiPlus::get_effective_accuracy(uint16_t strength, uint16_t frequency)
     return ranging_accuracy;
 }
 
-void TFminiPlus::dump_serial_cache()
-{
-    while (_stream->available())
-    {
+void TFminiPlus::dump_serial_cache() {
+    while (_stream->available()) {
         _stream->read();
     }
     _stream->flush();
