@@ -391,10 +391,37 @@ bool TFminiPlus::set_output_format(tfminiplus_output_format_t format) {
  * @return: True if a data output frame was received successfully.
  */
 bool TFminiPlus::read_manual_reading(tfminiplus_data_t &data) {
-    send_command(TFMINI_PLUS_TRIGGER_DETECTION);
-    do_i2c_wait();
+    trigger_manual_reading();
     return read_data(data);
 }
+
+/**
+ * Request the lidar to do a manual read.
+ * Useful for on-demand measurements.
+ */
+void TFminiPlus::trigger_manual_reading() { send_command(TFMINI_PLUS_TRIGGER_DETECTION); }
+
+/**
+ * Take a manual reading of the lidar.
+ * This method is useful when the framerate has been changed to 0 Hz
+ * and readings are taken on an on-demand basis.
+ *
+ * @return: Data container that includes distance, strength, and temperature measurements.
+ */
+tfminiplus_data_t TFminiPlus::get_manual_reading() {
+    tfminiplus_data_t data;
+    read_manual_reading(data);
+    return data;
+}
+
+/**
+ * Take a manual reading of the lidar.
+ * This method is useful when the framerate has been changed to 0 Hz
+ * and readings are taken on an on-demand basis.
+ *
+ * @return: Distance in cm/mm (depending on configuration).
+ */
+uint16_t TFminiPlus::get_manual_distance() { return get_manual_reading().distance; }
 
 /**
  * Read a data frame from the lidar.
@@ -410,6 +437,28 @@ bool TFminiPlus::read_data(tfminiplus_data_t &data, bool in_mm_format) {
     do_i2c_wait();
     return read_data_response(data);
 }
+
+/**
+ * Read a data frame from the lidar.
+ * If using the UART interface, frames are continually sent and do not need to be specifically requested.
+ *
+ * @param in_mm_format: True to request the data frame in mm units (I2C only).
+ * @return: Data container that includes distance, strength, and temperature measurements.
+ */
+tfminiplus_data_t TFminiPlus::get_data(bool in_mm_format) {
+    tfminiplus_data_t data;
+    read_data(data, in_mm_format);
+    return data;
+}
+
+/**
+ * Read a data frame from the lidar.
+ * If using the UART interface, frames are continually sent and do not need to be specifically requested.
+ *
+ * @param in_mm_format: True to request the data frame in mm units (I2C only).
+ * @return: Distance in cm/mm (depending on configuration).
+ */
+uint16_t TFminiPlus::get_distance(bool in_mm_format) { return get_data(in_mm_format).distance; }
 
 /**
  * Read in a response frame from the lidar.
@@ -478,7 +527,10 @@ bool TFminiPlus::set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance,
  * @param mode: Communication mode. [UART, I2C]
  * @return: True if the settings were saved correctly.
  */
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
 bool TFminiPlus::set_communication_interface(tfminiplus_communication_mode_t mode) {
     bool result;
     send_command(TFMINI_PLUS_SET_COMMUNICATION_INTERFACE, (uint8_t *)&mode,

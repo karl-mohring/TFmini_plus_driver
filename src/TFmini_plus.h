@@ -133,8 +133,15 @@ class TFminiPlus {
     bool set_output_format(tfminiplus_output_format_t format);
     bool set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance = 0, uint16_t hysteresis = 0);
 
+    void trigger_manual_reading();
     bool read_manual_reading(tfminiplus_data_t &data);
+    tfminiplus_data_t get_manual_reading();
+    uint16_t get_manual_distance();
+
     bool read_data(tfminiplus_data_t &data, bool in_mm_format = true);
+    tfminiplus_data_t get_data(bool in_mm_format = true);
+    uint16_t get_distance(bool in_mm_format = true);
+
     float get_effective_accuracy(uint16_t strength, uint16_t frequency);
 
     void dump_serial_cache();
