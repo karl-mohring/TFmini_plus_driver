@@ -527,10 +527,6 @@ bool TFminiPlus::set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance,
  * @param mode: Communication mode. [UART, I2C]
  * @return: True if the settings were saved correctly.
  */
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
 bool TFminiPlus::set_communication_interface(tfminiplus_communication_mode_t mode) {
     bool result;
     send_command(TFMINI_PLUS_SET_COMMUNICATION_INTERFACE, (uint8_t *)&mode,
