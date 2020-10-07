@@ -45,9 +45,9 @@ bool TFminiPlus::send_uart(uint8_t *input, uint8_t size) {
 bool TFminiPlus::send_i2c(uint8_t *input, uint8_t size) {
     Wire.beginTransmission(_address);
     uint8_t bytes_sent = Wire.write(input, size);
-    bool acknowledged = Wire.endTransmission();
-
-    return (bytes_sent == size and acknowledged);
+    if (bytes_sent != size) Wire.write(0);
+    uint8_t error = Wire.endTransmission(true);
+    return (bytes_sent == size and not error);
 }
 
 /**
@@ -91,9 +91,7 @@ bool TFminiPlus::send_command(tfminiplus_command_t command, uint8_t *arguments, 
  * @param command: 8-bit command to send; see TFMINI_PLUS_COMMANDS.
  * @return: True if the transmission was successful.
  */
-bool TFminiPlus::send_command(tfminiplus_command_t command) {
-    return send_command(command, 0, TFMINI_PLUS_MINIMUM_PACKET_SIZE);
-}
+bool TFminiPlus::send_command(tfminiplus_command_t command) { return send_command(command, 0, TFMINI_PLUS_MINIMUM_PACKET_SIZE); }
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -156,7 +154,7 @@ uint8_t TFminiPlus::receive_uart(uint8_t *output, uint8_t size, unsigned long ti
  * @return: True if the expected number of bytes was read.
  */
 uint8_t TFminiPlus::receive_i2c(uint8_t *output, uint8_t size) {
-    Wire.requestFrom(_address, size);
+    Wire.requestFrom(_address, size, true);
 
     uint8_t bytes_read = 0;
     for (size_t i = 0; (i < size) and Wire.available(); i++) {
@@ -185,8 +183,7 @@ bool TFminiPlus::uart_receive_data(uint8_t *output, uint8_t size, unsigned long 
     // Discard data until a valid packet header is found (0x5959)
     while ((millis() - start_time) < timeout and not packet_start_found) {
         if (_stream->available() >= 9) {
-            if (_stream->read() == TFMINI_PLUS_RESPONSE_FRAME_HEADER and
-                _stream->read() == TFMINI_PLUS_RESPONSE_FRAME_HEADER) {
+            if (_stream->read() == TFMINI_PLUS_RESPONSE_FRAME_HEADER and _stream->read() == TFMINI_PLUS_RESPONSE_FRAME_HEADER) {
                 output[0] = TFMINI_PLUS_RESPONSE_FRAME_HEADER;
                 output[1] = TFMINI_PLUS_RESPONSE_FRAME_HEADER;
                 packet_start_found = true;
@@ -237,7 +234,7 @@ uint8_t TFminiPlus::calculate_checksum(uint8_t *data, uint8_t size) {
  * This wait is also not required when requesting a data packet on either communication mode.
  */
 void TFminiPlus::do_i2c_wait() {
-    if (_communications_mode == TFMINI_PLUS_I2C) delay(100);
+    if (_communications_mode == TFMINI_PLUS_I2C) delay(150);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -329,6 +326,7 @@ bool TFminiPlus::set_framerate(tfminiplus_framerate_t framerate) {
     if (receive(response, sizeof(response))) {
         if (argument[0] == response[3] and argument[1] == response[4]) result = true;
     }
+
     return result;
 }
 
@@ -353,9 +351,7 @@ bool TFminiPlus::set_baudrate(tfminiplus_baudrate_t baudrate) {
     // Verify the echoed baudrate
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_SET_BAUD_RATE];
     if (receive(response, sizeof(response))) {
-        if (argument[0] == response[3] and argument[1] == response[4] and argument[2] == response[5] and
-            argument[3] == response[6])
-            result = true;
+        if (argument[0] == response[3] and argument[1] == response[4] and argument[2] == response[5] and argument[3] == response[6]) result = true;
     }
     return result;
 }
@@ -432,8 +428,8 @@ uint16_t TFminiPlus::get_manual_distance() { return get_manual_reading().distanc
  * @return: True if the data frame was received successfully.
  */
 bool TFminiPlus::read_data(tfminiplus_data_t &data, bool in_mm_format) {
-    if (_communications_mode == TFMINI_PLUS_I2C)
-        send_command(TFMINI_PLUS_GET_DATA, (uint8_t *)&in_mm_format, TFMINI_PLUS_PACK_LENGTH_GET_DATA);
+    uint8_t command = 1 + 5 * in_mm_format;
+    if (_communications_mode == TFMINI_PLUS_I2C) send_command(TFMINI_PLUS_GET_DATA, &command, TFMINI_PLUS_PACK_LENGTH_GET_DATA);
     do_i2c_wait();
     return read_data_response(data);
 }
@@ -469,7 +465,7 @@ uint16_t TFminiPlus::get_distance(bool in_mm_format) { return get_data(in_mm_for
  * @return: True if the response was received correctly.
  */
 bool TFminiPlus::read_data_response(tfminiplus_data_t &data) {
-    bool result;
+    bool result = false;
 
     // Grab the data
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_DATA_RESPONSE];
@@ -480,8 +476,6 @@ bool TFminiPlus::read_data_response(tfminiplus_data_t &data) {
     }
 
     // Put the data into the proper format
-
-    result = compare_checksum(response, sizeof(response));
 
     data.distance = response[2] + (response[3] << 8);
     result &= data.distance > 0;
@@ -529,8 +523,7 @@ bool TFminiPlus::set_io_mode(tfminiplus_mode_t mode, uint16_t critical_distance,
  */
 bool TFminiPlus::set_communication_interface(tfminiplus_communication_mode_t mode) {
     bool result;
-    send_command(TFMINI_PLUS_SET_COMMUNICATION_INTERFACE, (uint8_t *)&mode,
-                 TFMINI_PLUS_PACK_LENGTH_SET_COMMUNICATION_INTERFACE);
+    send_command(TFMINI_PLUS_SET_COMMUNICATION_INTERFACE, (uint8_t *)&mode, TFMINI_PLUS_PACK_LENGTH_SET_COMMUNICATION_INTERFACE);
 
     result = save_settings();
     if (result) {
@@ -551,8 +544,7 @@ bool TFminiPlus::set_communication_interface(tfminiplus_communication_mode_t mod
 bool TFminiPlus::enable_output(bool output_enabled) {
     bool result = false;
 
-    send_command(TFMINI_PLUS_ENABLE_DATA_OUTPUT, (uint8_t *)&output_enabled,
-                 TFMINI_PLUS_PACK_LENGTH_ENABLE_DATA_OUTPUT);
+    send_command(TFMINI_PLUS_ENABLE_DATA_OUTPUT, (uint8_t *)&output_enabled, TFMINI_PLUS_PACK_LENGTH_ENABLE_DATA_OUTPUT);
     do_i2c_wait();
 
     uint8_t response[TFMINI_PLUS_PACK_LENGTH_ENABLE_DATA_OUTPUT];
@@ -633,8 +625,7 @@ float TFminiPlus::get_effective_accuracy(uint16_t strength, uint16_t frequency) 
     float x = log10(strength);
     float y = log10(frequency);
 
-    float ranging_accuracy =
-        TFMINI_PLUS_P00 + TFMINI_PLUS_P10 * x + TFMINI_PLUS_P01 * y + TFMINI_PLUS_P20 * x * x + TFMINI_PLUS_P11 * x * y;
+    float ranging_accuracy = TFMINI_PLUS_P00 + TFMINI_PLUS_P10 * x + TFMINI_PLUS_P01 * y + TFMINI_PLUS_P20 * x * x + TFMINI_PLUS_P11 * x * y;
     return ranging_accuracy;
 }
 
